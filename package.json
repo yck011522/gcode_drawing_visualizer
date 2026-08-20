@@ -1,0 +1,15 @@
+{
+  "name": "gcode-drawing-visualizer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-based teaching tool for visualizing simple G-code drawing programs.",
+  "scripts": {
+    "serve": "http-server . -c-1 -p 4173",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.46.0",
+    "http-server": "^14.1.1"
+  }
+}
