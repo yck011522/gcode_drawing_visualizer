@@ -101,10 +101,16 @@
       <section class="panel" aria-labelledby="editor-title">
         <div class="panel-heading"><h2 id="editor-title">G-code editor</h2><span id="lineReadout" class="muted">Line 1</span></div>
         <textarea id="codeEditor" aria-label="G-code editor" spellcheck="false">G0 X20 Y20 Z0
-G1 X20 Y80 Z5 F600
+G1 X20 Y80 Z5 F2000
 G1 X100 Y80
 G1 X100 Y20
 G1 X20 Y20
+G0 Z0
+G0 X40 Y40
+G1 X80 Y60 Z5 F600
+G1 X40 Y60
+G1 X80 Y40
+G1 X40 Y40
 G0 Z0</textarea>
         <div class="editor-footer">
           <span id="message" class="message">Ready.</span>
