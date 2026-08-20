@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>G-code Drawing Visualizer</title>
+    <style>
+      :root { font-family: Inter, system-ui, sans-serif; color: #18212b; background: #e8ebed; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: linear-gradient(135deg, #eef0f1, #dadddf); }
+      header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; background: #fff; border-bottom: 1px solid #cbd1d5; }
+      h1 { margin: 0; font-size: 1.25rem; }
+      header p { margin: .25rem 0 0; color: #65717c; font-size: .875rem; }
+      button { border: 0; border-radius: .5rem; padding: .7rem 1.2rem; color: #fff; background: #176b52; font: inherit; font-weight: 700; }
+      main { display: grid; grid-template-columns: minmax(18rem, .8fr) minmax(28rem, 1.4fr); gap: 1rem; padding: 1rem; min-height: calc(100vh - 5rem); }
+      .panel { overflow: hidden; border: 1px solid #c5cbcf; border-radius: .75rem; background: #fff; box-shadow: 0 .4rem 1.2rem rgb(35 45 52 / 9%); }
+      .panel-heading { display: flex; align-items: center; justify-content: space-between; min-height: 3rem; padding: .65rem .9rem; border-bottom: 1px solid #d9dddf; }
+      .panel-heading h2 { margin: 0; font-size: .95rem; }
+      .muted { color: #6a747d; font-size: .8rem; }
+      textarea { display: block; width: 100%; min-height: calc(100vh - 11rem); resize: none; border: 0; outline: 0; padding: 1rem; color: #24313b; background: #f9faf9; font: .95rem/1.7 monospace; }
+      .workspace { display: grid; place-items: center; min-height: calc(100vh - 11rem); padding: 2rem; background: #c9ced1; }
+      .paper { position: relative; width: min(100%, 53rem); aspect-ratio: 210 / 148; background: #fff; border: 1px solid #b6babc; box-shadow: 0 .7rem 1.7rem rgb(39 45 48 / 20%); }
+      .origin { position: absolute; bottom: -1.6rem; left: 0; color: #687279; font: .75rem/1 monospace; }
+      .pen { position: absolute; left: 32%; bottom: 35%; width: .8rem; height: .8rem; translate: -50% 50%; border: .2rem solid #fff; border-radius: 50%; background: #176b52; box-shadow: 0 0 0 1px #176b52; }
+      .status { display: flex; gap: 1rem; color: #47535c; font: .8rem/1 monospace; }
+      @media (max-width: 800px) { header { align-items: flex-start; gap: 1rem; } main { grid-template-columns: 1fr; } textarea, .workspace { min-height: 25rem; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div><h1>G-code Drawing Visualizer</h1><p>Learn by watching your code draw.</p></div>
+      <button type="button">Run program</button>
+    </header>
+    <main>
+      <section class="panel" aria-labelledby="editor-title">
+        <div class="panel-heading"><h2 id="editor-title">G-code editor</h2><span class="muted">Line 1</span></div>
+        <textarea aria-label="G-code editor" spellcheck="false">G0 X20 Y20 Z0
+G1 X20 Y80 Z5 F600
+G1 X100 Y80
+G1 X100 Y20
+G1 X20 Y20
+G0 Z0</textarea>
+      </section>
+      <section class="panel" aria-labelledby="preview-title">
+        <div class="panel-heading">
+          <h2 id="preview-title">A5 landscape preview</h2>
+          <div class="status" aria-label="Pen position"><span>X 0.0</span><span>Y 0.0</span><span>Z 0.0</span><span>Pen up</span></div>
+        </div>
+        <div class="workspace"><div class="paper" aria-label="Drawing paper"><span class="pen" aria-label="Pen position marker"></span><span class="origin">0, 0</span></div></div>
+      </section>
+    </main>
+  </body>
+</html>
