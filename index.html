@@ -23,11 +23,29 @@
       .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 3rem; padding: .65rem .9rem; border-bottom: 1px solid #d9dddf; }
       .panel-heading h2 { margin: 0; font-size: .95rem; }
       .muted { color: #6a747d; font-size: .8rem; }
-      textarea { display: block; width: 100%; min-height: calc(100vh - 11rem); resize: none; border: 0; outline: 0; padding: 1rem; color: #24313b; background: #f9faf9; font: .95rem/1.7 monospace; }
-      textarea.has-error { box-shadow: inset 0 0 0 2px #b7362b; background: #fff8f7; }
-      .editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 2.4rem; padding: .45rem .9rem; border-top: 1px solid #d9dddf; color: #52606a; font: .8rem/1.3 monospace; }
-      .message { color: #42515b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .editor-body { display: grid; grid-template-columns: 4.8rem minmax(0, 1fr); min-height: calc(100vh - 12.8rem); background: #f9faf9; }
+      .line-gutter { overflow: hidden; padding: 1rem .55rem; border-right: 1px solid #d9dddf; color: #87919a; background: #f2f4f3; font: .95rem/1.7 monospace; text-align: right; white-space: pre; user-select: none; }
+      .gutter-line { display: grid; grid-template-columns: 1fr 1.1rem; gap: .35rem; min-height: 1.615rem; }
+      .gutter-status { color: transparent; text-align: center; }
+      .line-gutter .success { color: #277448; }
+      .line-gutter .error { color: #9e2d25; }
+      .line-gutter .current { color: #176b52; font-weight: 700; }
+      .editor-stack { position: relative; min-height: inherit; background: #f9faf9; }
+      .code-highlight, textarea { position: absolute; inset: 0; display: block; width: 100%; height: 100%; margin: 0; border: 0; padding: 1rem; font: .95rem/1.7 monospace; tab-size: 2; white-space: pre-wrap; overflow: auto; }
+      .code-highlight { pointer-events: none; color: #24313b; background: #f9faf9; }
+      .code-highlight div { min-height: 1.615rem; }
+      .code-highlight .success { color: #277448; }
+      .code-highlight .error { color: #9e2d25; font-weight: 700; }
+      .code-highlight .current { background: rgb(23 107 82 / 8%); }
+      textarea { resize: none; outline: 0; color: #24313b; background: #f9faf9; }
+      .editor-body.has-run-annotations textarea { color: transparent; background: transparent; caret-color: #24313b; -webkit-text-fill-color: transparent; }
+      .editor-body.has-error { box-shadow: inset 0 0 0 2px #b7362b; background: #fff8f7; }
+      .editor-body.has-error .code-highlight, .editor-body.has-error textarea { background: transparent; }
+      .editor-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; min-height: 4.7rem; padding: .65rem .9rem; border-top: 1px solid #d9dddf; color: #52606a; font: .8rem/1.45 monospace; }
+      .message { color: #42515b; white-space: pre-wrap; }
       .message.error { color: #9e2d25; }
+      .message.success { color: #277448; }
+      .message.stopped { color: #675132; }
       .workspace { display: grid; place-items: center; min-height: calc(100vh - 11rem); padding: 2rem; background: #c9ced1; }
       .paper { position: relative; width: min(100%, 53rem); aspect-ratio: 210 / 148; background: #fff; border: 1px solid #b6babc; box-shadow: 0 .7rem 1.7rem rgb(39 45 48 / 20%); }
       canvas { display: block; width: 100%; height: 100%; }
@@ -44,7 +62,7 @@
       @media (max-width: 800px) {
         header { align-items: flex-start; }
         main { grid-template-columns: 1fr; }
-        textarea, .workspace { min-height: 25rem; }
+        .editor-body, .workspace { min-height: 25rem; }
         .settings-grid { grid-template-columns: 1fr 1fr; }
       }
       @media (max-width: 520px) {
@@ -100,7 +118,11 @@
 
       <section class="panel" aria-labelledby="editor-title">
         <div class="panel-heading"><h2 id="editor-title">G-code editor</h2><span id="lineReadout" class="muted">Line 1</span></div>
-        <textarea id="codeEditor" aria-label="G-code editor" spellcheck="false">G0 X20 Y20 Z0
+        <div id="editorBody" class="editor-body">
+          <div id="lineGutter" class="line-gutter" aria-hidden="true"></div>
+          <div class="editor-stack">
+            <pre id="codeHighlight" class="code-highlight" aria-hidden="true"></pre>
+            <textarea id="codeEditor" aria-label="G-code editor" spellcheck="false">G0 X20 Y20 Z0
 G1 X20 Y80 Z5 F2000
 G1 X100 Y80
 G1 X100 Y20
@@ -112,6 +134,8 @@ G1 X40 Y60
 G1 X80 Y40
 G1 X40 Y40
 G0 Z0</textarea>
+          </div>
+        </div>
         <div class="editor-footer">
           <span id="message" class="message">Ready.</span>
           <span id="programReadout">0 moves</span>
@@ -138,380 +162,6 @@ G0 Z0</textarea>
       </section>
     </main>
 
-    <script>
-      const papers = {
-        "a5-landscape": { label: "A5 landscape", width: 210, height: 148 },
-        "a5-portrait": { label: "A5 portrait", width: 148, height: 210 },
-        "a4-portrait": { label: "A4 portrait", width: 210, height: 297 }
-      };
-
-      const state = {
-        running: false,
-        cancelRun: 0,
-        paper: papers["a5-landscape"],
-        position: { x: 0, y: 0, z: 0 },
-        feed: 600,
-        completedSegments: []
-      };
-
-      const els = {
-        runButton: document.getElementById("runButton"),
-        saveButton: document.getElementById("saveButton"),
-        settingsButton: document.getElementById("settingsButton"),
-        settingsPanel: document.getElementById("settingsPanel"),
-        paperSelect: document.getElementById("paperSelect"),
-        penThresholdInput: document.getElementById("penThresholdInput"),
-        penWidthInput: document.getElementById("penWidthInput"),
-        rapidSpeedInput: document.getElementById("rapidSpeedInput"),
-        feedRateInput: document.getElementById("feedRateInput"),
-        previewSpeedSelect: document.getElementById("previewSpeedSelect"),
-        codeEditor: document.getElementById("codeEditor"),
-        lineReadout: document.getElementById("lineReadout"),
-        message: document.getElementById("message"),
-        programReadout: document.getElementById("programReadout"),
-        previewTitle: document.getElementById("preview-title"),
-        paper: document.getElementById("paper"),
-        canvas: document.getElementById("drawingCanvas"),
-        pen: document.getElementById("pen"),
-        xStatus: document.getElementById("xStatus"),
-        yStatus: document.getElementById("yStatus"),
-        zStatus: document.getElementById("zStatus"),
-        feedStatus: document.getElementById("feedStatus"),
-        penStatus: document.getElementById("penStatus")
-      };
-
-      const ctx = els.canvas.getContext("2d");
-
-      function getSettings() {
-        const paper = papers[els.paperSelect.value];
-        return {
-          paper,
-          penThreshold: readNonNegativeNumber(els.penThresholdInput, 2),
-          penWidth: readPositiveNumber(els.penWidthInput, .7),
-          rapidSpeed: readPositiveNumber(els.rapidSpeedInput, 3000),
-          initialFeed: readPositiveNumber(els.feedRateInput, 600),
-          previewSpeed: readPositiveNumber(els.previewSpeedSelect, 5)
-        };
-      }
-
-      function readPositiveNumber(input, fallback) {
-        const value = Number(input.value);
-        return Number.isFinite(value) && value > 0 ? value : fallback;
-      }
-
-      function readNonNegativeNumber(input, fallback) {
-        const value = Number(input.value);
-        return Number.isFinite(value) && value >= 0 ? value : fallback;
-      }
-
-      function stripComments(line) {
-        return line.replace(/\([^)]*\)/g, "").replace(/;.*/, "").trim();
-      }
-
-      function parseLine(rawLine, lineNumber) {
-        const clean = stripComments(rawLine);
-        if (!clean) return { lineNumber, empty: true };
-
-        const compact = clean.replace(/\s+/g, "").toUpperCase();
-        const tokens = [];
-        const pattern = /([A-Z])([-+]?(?:\d+\.?\d*|\.\d+))/g;
-        let match;
-        let rebuilt = "";
-        while ((match = pattern.exec(compact)) !== null) {
-          tokens.push({ word: match[1], value: Number(match[2]), raw: match[0] });
-          rebuilt += match[0];
-        }
-
-        if (rebuilt !== compact) {
-          throw new Error(`Line ${lineNumber}: I could not read "${rawLine.trim()}". Use words like G1, X20, Y40, Z2, or F600.`);
-        }
-
-        const parsed = { lineNumber, g: null, x: null, y: null, z: null, f: null };
-        for (const token of tokens) {
-          if (!Number.isFinite(token.value)) {
-            throw new Error(`Line ${lineNumber}: "${token.raw}" is not a valid number.`);
-          }
-          if (token.word === "G") {
-            if (token.value !== 0 && token.value !== 1) {
-              throw new Error(`Line ${lineNumber}: only G0 and G1 moves are supported right now.`);
-            }
-            parsed.g = token.value;
-          } else if (token.word === "X" || token.word === "Y" || token.word === "Z" || token.word === "F") {
-            parsed[token.word.toLowerCase()] = token.value;
-          } else {
-            throw new Error(`Line ${lineNumber}: ${token.word} words are not supported yet.`);
-          }
-        }
-        return parsed;
-      }
-
-      function buildProgram(source, settings) {
-        const lines = source.split(/\r?\n/);
-        const steps = [];
-        const position = { x: 0, y: 0, z: 0 };
-        let feed = settings.initialFeed;
-        let mode = 0;
-
-        lines.forEach((rawLine, index) => {
-          const parsed = parseLine(rawLine, index + 1);
-          if (parsed.empty) return;
-
-          if (parsed.g !== null) mode = parsed.g;
-          if (parsed.f !== null) {
-            if (parsed.f <= 0) {
-              throw new Error(`Line ${parsed.lineNumber}: feed rate must be greater than zero.`);
-            }
-            feed = parsed.f;
-          }
-
-          const next = {
-            x: parsed.x !== null ? parsed.x : position.x,
-            y: parsed.y !== null ? parsed.y : position.y,
-            z: parsed.z !== null ? parsed.z : position.z
-          };
-
-          if (next.x < 0 || next.y < 0 || next.z < 0) {
-            throw new Error(`Line ${parsed.lineNumber}: coordinates must be positive values.`);
-          }
-          if (next.x > settings.paper.width || next.y > settings.paper.height) {
-            throw new Error(`Line ${parsed.lineNumber}: X${next.x} Y${next.y} is outside ${settings.paper.label} (${settings.paper.width} x ${settings.paper.height} mm).`);
-          }
-
-          const moved = next.x !== position.x || next.y !== position.y || next.z !== position.z;
-          if (moved) {
-            steps.push({
-              lineNumber: parsed.lineNumber,
-              mode,
-              feed,
-              from: { ...position },
-              to: next
-            });
-          }
-
-          position.x = next.x;
-          position.y = next.y;
-          position.z = next.z;
-        });
-
-        return steps;
-      }
-
-      function resizeCanvas() {
-        const rect = els.paper.getBoundingClientRect();
-        const ratio = window.devicePixelRatio || 1;
-        els.canvas.width = Math.max(1, Math.round(rect.width * ratio));
-        els.canvas.height = Math.max(1, Math.round(rect.height * ratio));
-        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        redraw();
-        updatePen(state.position, getSettings());
-      }
-
-      function mmToCanvas(point, paper = state.paper) {
-        const rect = els.paper.getBoundingClientRect();
-        return {
-          x: point.x / paper.width * rect.width,
-          y: rect.height - point.y / paper.height * rect.height
-        };
-      }
-
-      function drawSegment(segment, progress = 1) {
-        const start = mmToCanvas(segment.from);
-        const endPoint = {
-          x: segment.from.x + (segment.to.x - segment.from.x) * progress,
-          y: segment.from.y + (segment.to.y - segment.from.y) * progress
-        };
-        const end = mmToCanvas(endPoint);
-        const rect = els.paper.getBoundingClientRect();
-        const pxPerMm = rect.width / state.paper.width;
-
-        ctx.beginPath();
-        ctx.moveTo(start.x, start.y);
-        ctx.lineTo(end.x, end.y);
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.lineWidth = Math.max(1, getSettings().penWidth * pxPerMm);
-        ctx.strokeStyle = "#111";
-        ctx.stroke();
-      }
-
-      function redraw(activeSegment = null, progress = 1) {
-        const rect = els.paper.getBoundingClientRect();
-        ctx.clearRect(0, 0, rect.width, rect.height);
-        state.completedSegments.forEach(segment => drawSegment(segment));
-        if (activeSegment) drawSegment(activeSegment, progress);
-      }
-
-      function shouldDraw(step, settings) {
-        const xyMoved = step.from.x !== step.to.x || step.from.y !== step.to.y;
-        return xyMoved && Math.max(step.from.z, step.to.z) >= settings.penThreshold;
-      }
-
-      function updatePen(position, settings) {
-        state.position = { ...position };
-        const point = mmToCanvas(position, settings.paper);
-        els.pen.style.left = `${point.x}px`;
-        els.pen.style.bottom = `${els.paper.getBoundingClientRect().height - point.y}px`;
-
-        const penDown = position.z >= settings.penThreshold;
-        els.pen.classList.toggle("pen-up", !penDown);
-        els.xStatus.textContent = `X ${position.x.toFixed(1)}`;
-        els.yStatus.textContent = `Y ${position.y.toFixed(1)}`;
-        els.zStatus.textContent = `Z ${position.z.toFixed(1)}`;
-        els.penStatus.textContent = penDown ? "Pen down" : "Pen up";
-      }
-
-      function setMessage(text, isError = false) {
-        els.message.textContent = text;
-        els.message.classList.toggle("error", isError);
-        els.codeEditor.classList.toggle("has-error", isError);
-      }
-
-      function setPaper(settings) {
-        state.paper = settings.paper;
-        els.paper.style.aspectRatio = `${settings.paper.width} / ${settings.paper.height}`;
-        els.previewTitle.textContent = `${settings.paper.label} preview`;
-        resizeCanvas();
-      }
-
-      function sleepFrame() {
-        return new Promise(resolve => requestAnimationFrame(resolve));
-      }
-
-      function animateStep(step, settings, runId) {
-        const dx = step.to.x - step.from.x;
-        const dy = step.to.y - step.from.y;
-        const dz = step.to.z - step.from.z;
-        const distance = Math.hypot(dx, dy, dz);
-        const speed = step.mode === 0 ? settings.rapidSpeed : step.feed;
-        const duration = Math.min(8000, Math.max(80, distance / speed * 60000 / settings.previewSpeed));
-        const draws = shouldDraw(step, settings);
-        const startTime = performance.now();
-
-        return new Promise(resolve => {
-          function tick(now) {
-            if (runId !== state.cancelRun) {
-              resolve(false);
-              return;
-            }
-
-            const progress = Math.min(1, (now - startTime) / duration);
-            const position = {
-              x: step.from.x + dx * progress,
-              y: step.from.y + dy * progress,
-              z: step.from.z + dz * progress
-            };
-            updatePen(position, settings);
-            els.lineReadout.textContent = `Running line ${step.lineNumber}`;
-            els.feedStatus.textContent = `F ${step.feed}`;
-            redraw(draws ? step : null, progress);
-
-            if (progress < 1) {
-              requestAnimationFrame(tick);
-            } else {
-              if (draws) state.completedSegments.push(step);
-              redraw();
-              resolve(true);
-            }
-          }
-          requestAnimationFrame(tick);
-        });
-      }
-
-      async function runProgram() {
-        const settings = getSettings();
-        const runId = ++state.cancelRun;
-        state.running = true;
-        els.runButton.disabled = true;
-        els.saveButton.disabled = true;
-        state.completedSegments = [];
-        setPaper(settings);
-        updatePen({ x: 0, y: 0, z: 0 }, settings);
-        redraw();
-        await sleepFrame();
-
-        let steps;
-        try {
-          steps = buildProgram(els.codeEditor.value, settings);
-        } catch (error) {
-          state.running = false;
-          els.runButton.disabled = false;
-          setMessage(error.message, true);
-          els.programReadout.textContent = "Stopped";
-          return;
-        }
-
-        els.programReadout.textContent = `${steps.length} move${steps.length === 1 ? "" : "s"}`;
-        setMessage(steps.length ? "Running program..." : "No movement commands to run.");
-
-        for (const step of steps) {
-          const finished = await animateStep(step, settings, runId);
-          if (!finished) return;
-        }
-
-        state.running = false;
-        els.runButton.disabled = false;
-        els.saveButton.disabled = false;
-        els.lineReadout.textContent = "Finished";
-        setMessage(`Finished ${steps.length} move${steps.length === 1 ? "" : "s"}.`);
-      }
-
-      function saveImage() {
-        const settings = getSettings();
-        const pxPerMm = 8;
-        const exportCanvas = document.createElement("canvas");
-        exportCanvas.width = Math.round(state.paper.width * pxPerMm);
-        exportCanvas.height = Math.round(state.paper.height * pxPerMm);
-        const exportCtx = exportCanvas.getContext("2d");
-        exportCtx.fillStyle = "#fff";
-        exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-        exportCtx.strokeStyle = "#111";
-        exportCtx.lineCap = "round";
-        exportCtx.lineJoin = "round";
-        exportCtx.lineWidth = Math.max(1, settings.penWidth * pxPerMm);
-
-        state.completedSegments.forEach(segment => {
-          exportCtx.beginPath();
-          exportCtx.moveTo(segment.from.x * pxPerMm, exportCanvas.height - segment.from.y * pxPerMm);
-          exportCtx.lineTo(segment.to.x * pxPerMm, exportCanvas.height - segment.to.y * pxPerMm);
-          exportCtx.stroke();
-        });
-
-        const link = document.createElement("a");
-        link.href = exportCanvas.toDataURL("image/jpeg", .92);
-        link.download = "gcode-drawing.jpg";
-        link.click();
-      }
-
-      function updateCurrentLine() {
-        const textBeforeCaret = els.codeEditor.value.slice(0, els.codeEditor.selectionStart);
-        const line = textBeforeCaret.split(/\r?\n/).length;
-        if (!state.running) els.lineReadout.textContent = `Line ${line}`;
-      }
-
-      els.runButton.addEventListener("click", runProgram);
-      els.saveButton.addEventListener("click", saveImage);
-      els.settingsButton.addEventListener("click", () => {
-        const isOpen = els.settingsPanel.classList.toggle("is-open");
-        els.settingsButton.setAttribute("aria-expanded", String(isOpen));
-      });
-      els.paperSelect.addEventListener("change", () => setPaper(getSettings()));
-      [els.paperSelect, els.penThresholdInput, els.penWidthInput, els.rapidSpeedInput, els.feedRateInput, els.previewSpeedSelect].forEach(input => {
-        input.addEventListener("change", () => {
-          els.saveButton.disabled = true;
-          if (!state.running) setMessage("Settings changed. Run program again.");
-        });
-      });
-      els.codeEditor.addEventListener("input", () => {
-        els.saveButton.disabled = true;
-        setMessage("Ready.");
-        updateCurrentLine();
-      });
-      els.codeEditor.addEventListener("keyup", updateCurrentLine);
-      els.codeEditor.addEventListener("click", updateCurrentLine);
-      window.addEventListener("resize", resizeCanvas);
-
-      setPaper(getSettings());
-      updateCurrentLine();
-    </script>
+    <script src="app.js"></script>
   </body>
 </html>

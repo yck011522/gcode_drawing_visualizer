@@ -1,9 +1,7 @@
-const path = require("node:path");
-const { pathToFileURL } = require("node:url");
 const { test, expect } = require("@playwright/test");
 
 test("runs a G-code program, draws on the canvas, and enables JPEG export", async ({ page }) => {
-  await page.goto(pathToFileURL(path.join(process.cwd(), "index.html")).href);
+  await page.goto("/");
 
   const saveButton = page.getByRole("button", { name: "Save image" });
   await expect(saveButton).toBeDisabled();
@@ -17,6 +15,7 @@ test("runs a G-code program, draws on the canvas, and enables JPEG export", asyn
   await page.getByRole("button", { name: "Run program" }).click();
   await expect(page.getByText("Finished 3 moves.")).toBeVisible();
   await expect(saveButton).toBeEnabled();
+  await expect(page.locator("#codeHighlight .success")).toHaveCount(3);
 
   const hasInk = await page.locator("#drawingCanvas").evaluate((canvas) => {
     const context = canvas.getContext("2d");
@@ -32,4 +31,56 @@ test("runs a G-code program, draws on the canvas, and enables JPEG export", asyn
   });
 
   expect(hasInk).toBe(true);
+});
+
+test("shows teacher-style syntax feedback and clears run colors only after editing", async ({ page }) => {
+  await page.goto("/");
+
+  const editor = page.getByRole("textbox", { name: "G-code editor" });
+  await editor.fill("G0 X10 Y10 Z0\nG1 X20, Y20 Z5");
+  await page.getByRole("button", { name: "Run program" }).click();
+
+  await expect(page.locator("#message")).toContainText("Line 2: G-code does not use commas between words.");
+  await expect(page.locator("#codeHighlight .success")).toHaveCount(1);
+  await expect(page.locator("#codeHighlight .error")).toContainText("G1 X20, Y20 Z5");
+
+  await editor.click();
+  await expect(page.locator("#editorBody")).toHaveClass(/has-run-annotations/);
+  await expect(page.locator("#codeHighlight .error")).toHaveCount(1);
+
+  await editor.press("End");
+  await editor.press("Backspace");
+  await expect(page.locator("#editorBody")).not.toHaveClass(/has-run-annotations/);
+  await expect(page.locator("#codeHighlight .error")).toHaveCount(0);
+});
+
+test("uses the Run button as a Stop button during execution", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("textbox", { name: "G-code editor" }).fill([
+    "G0 X10 Y10 Z0",
+    "G1 X100 Y10 Z5 F1"
+  ].join("\n"));
+
+  await page.getByRole("button", { name: "Run program" }).click();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  await page.getByRole("button", { name: "Stop" }).click();
+
+  await expect(page.getByRole("button", { name: "Run program" })).toBeVisible();
+  await expect(page.locator("#message")).toContainText("Stopped");
+  await expect(page.getByRole("button", { name: "Save image" })).toBeDisabled();
+});
+
+test("keeps line feedback usable in a narrow mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 820 });
+  await page.goto("/");
+
+  const editor = page.getByRole("textbox", { name: "G-code editor" });
+  await editor.fill("G0 X10 Y10 Z0\nG1 X20, Y20 Z5");
+  await page.getByRole("button", { name: "Run program" }).click();
+
+  await expect(page.locator("#lineGutter .gutter-line.success")).toHaveCount(1);
+  await expect(page.locator("#lineGutter .gutter-line.error")).toHaveCount(1);
+  await editor.click();
+  await expect(page.locator("#editorBody")).toHaveClass(/has-run-annotations/);
 });
