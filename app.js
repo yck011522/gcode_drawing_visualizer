@@ -120,6 +120,8 @@ function readNonNegativeNumber(input, fallback) {
 }
 
 function stripComments(line) {
+  // Parenthesized comments can appear inline. A semicolon comments out the
+  // rest of the line after parenthesized comments have been removed.
   return line.replace(/\([^)]*\)/g, "").replace(/;.*/, "").trim();
 }
 

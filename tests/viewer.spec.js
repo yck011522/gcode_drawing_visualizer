@@ -54,6 +54,26 @@ test("shows teacher-style syntax feedback and clears run colors only after editi
   await expect(page.locator("#codeHighlight .error")).toHaveCount(0);
 });
 
+test("ignores semicolon and parenthesized comments in G-code", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("textbox", { name: "G-code editor" }).fill([
+    "; this whole line is a comment with G2 X? and commas, commas",
+    "G0 X10 Y10 Z0 ; move to the start",
+    "G1 Z5 F6000 (lower the pen)",
+    "G1 X40 Y10 (this comment can mention PU, M3, or G2)",
+    "(another full-line comment)",
+    "Y40 ; modal G1 movement continues here"
+  ].join("\n"));
+
+  await page.getByRole("button", { name: "Run program" }).click();
+
+  await expect(page.locator("#message")).toContainText("Finished 4 moves.");
+  await expect(page.locator("#codeHighlight .success")).toHaveCount(4);
+  await expect(page.locator("#codeHighlight .error")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save image" })).toBeEnabled();
+});
+
 test("uses the Run button as a Stop button during execution", async ({ page }) => {
   await page.goto("/");
 
