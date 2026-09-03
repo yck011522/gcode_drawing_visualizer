@@ -3,6 +3,7 @@ const { test, expect } = require("@playwright/test");
 async function captureNextExport(page) {
   await page.evaluate(() => {
     const original = HTMLCanvasElement.prototype.toDataURL;
+    const originalClick = HTMLAnchorElement.prototype.click;
     HTMLCanvasElement.prototype.toDataURL = function(...args) {
       const context = this.getContext("2d");
       const corner = Array.from(context.getImageData(0, 0, 1, 1).data);
@@ -29,6 +30,33 @@ async function captureNextExport(page) {
       };
       return original.apply(this, args);
     };
+    HTMLAnchorElement.prototype.click = function(...args) {
+      window.__lastAnchorDownload = this.download;
+      window.__lastAnchorHref = this.href;
+      if (this.href.startsWith("data:")) return undefined;
+      return originalClick.apply(this, args);
+    };
+  });
+}
+
+async function useFixedBrowserClock(page) {
+  await page.addInitScript(() => {
+    const RealDate = Date;
+    const fixedDate = new RealDate("2026-09-03T19:30:21");
+    class FixedDate extends RealDate {
+      constructor(...args) {
+        if (args.length === 0) return new RealDate(fixedDate);
+        return new RealDate(...args);
+      }
+
+      static now() {
+        return fixedDate.getTime();
+      }
+    }
+
+    FixedDate.UTC = RealDate.UTC;
+    FixedDate.parse = RealDate.parse;
+    window.Date = FixedDate;
   });
 }
 
@@ -87,6 +115,51 @@ test("uses the editor text and gutter as an export watermark by default", async 
   expect(stats.height).toBeGreaterThan(stats.layout.paperHeight);
   expect(stats.corner.slice(0, 3)).toEqual([201, 206, 209]);
   expect(stats.paperTopNonWhitePixels).toBeGreaterThan(100);
+});
+
+test("uses the Run-click timestamp for JPEG and G-code text downloads", async ({ page }) => {
+  await useFixedBrowserClock(page);
+  await page.goto("/");
+
+  const source = [
+    "G0 X10 Y10 Z0",
+    "G1 Z5 F6000",
+    "G1 X40 Y10 ; student line"
+  ].join("\n");
+  const saveButton = page.getByRole("button", { name: "Save image" });
+  const downloadCodeButton = page.getByRole("button", { name: "Download G-code" });
+
+  await expect(downloadCodeButton).toBeDisabled();
+  await page.getByRole("textbox", { name: "G-code editor" }).fill(source);
+  await page.getByRole("button", { name: "Run program" }).click();
+  await expect(page.locator("#message")).toContainText("Finished 3 moves.");
+  await expect(saveButton).toBeEnabled();
+  await expect(downloadCodeButton).toBeEnabled();
+
+  await captureNextExport(page);
+  await saveButton.click();
+  await expect.poll(() => page.evaluate(() => window.__lastAnchorDownload)).toBe("Drawing_20260903_193021.jpg");
+
+  await page.evaluate(() => {
+    URL.createObjectURL = (blob) => {
+      blob.text().then(text => { window.__lastTextDownload = text; });
+      return "blob:captured-gcode";
+    };
+    URL.revokeObjectURL = () => {};
+    HTMLAnchorElement.prototype.click = function() {
+      window.__lastAnchorDownload = this.download;
+      window.__lastAnchorHref = this.href;
+    };
+  });
+
+  await downloadCodeButton.click();
+  await expect.poll(() => page.evaluate(() => window.__lastAnchorDownload)).toBe("Drawing_20260903_193021.txt");
+  await expect.poll(() => page.evaluate(() => window.__lastTextDownload)).toBe(source);
+
+  await page.getByRole("textbox", { name: "G-code editor" }).press("End");
+  await page.getByRole("textbox", { name: "G-code editor" }).press("Enter");
+  await expect(saveButton).toBeDisabled();
+  await expect(downloadCodeButton).toBeDisabled();
 });
 
 test("can save without the code watermark when the export option is off", async ({ page }) => {

@@ -13,12 +13,15 @@ const state = {
   feed: 600,
   completedSegments: [],
   lineStatuses: [],
-  annotationsActive: false
+  annotationsActive: false,
+  runBaseName: null,
+  runSource: ""
 };
 
 const els = {
   runButton: document.getElementById("runButton"),
   saveButton: document.getElementById("saveButton"),
+  downloadCodeButton: document.getElementById("downloadCodeButton"),
   settingsButton: document.getElementById("settingsButton"),
   settingsPanel: document.getElementById("settingsPanel"),
   paperSelect: document.getElementById("paperSelect"),
@@ -50,6 +53,15 @@ const ctx = els.canvas.getContext("2d");
 
 function splitSourceLines() {
   return els.codeEditor.value.split(/\r?\n/);
+}
+
+function formatDrawingBaseName(date) {
+  const pad = value => String(value).padStart(2, "0");
+  return [
+    "Drawing",
+    `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`,
+    `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
+  ].join("_");
 }
 
 function escapeHtml(text) {
@@ -444,10 +456,13 @@ async function runProgram() {
   const runId = ++state.cancelRun;
   state.running = true;
   state.userStopped = false;
+  state.runBaseName = formatDrawingBaseName(new Date());
+  state.runSource = els.codeEditor.value;
   els.runButton.disabled = true;
   els.runButton.textContent = "Stop";
   els.runButton.disabled = false;
   els.saveButton.disabled = true;
+  els.downloadCodeButton.disabled = false;
   state.completedSegments = [];
   state.lineStatuses = splitSourceLines().map(() => "");
   state.annotationsActive = true;
@@ -683,6 +698,7 @@ function createFramedExportCanvas(paperCanvas, pxPerMm) {
 function saveImage() {
   const settings = getSettings();
   const pxPerMm = 8;
+  const baseName = state.runBaseName || formatDrawingBaseName(new Date());
   const paperCanvas = createPaperExportCanvas(settings, pxPerMm);
   const exportImage = createFramedExportCanvas(paperCanvas, pxPerMm);
   const exportCanvas = exportImage.canvas;
@@ -691,8 +707,20 @@ function saveImage() {
 
   const link = document.createElement("a");
   link.href = exportCanvas.toDataURL("image/jpeg", .92);
-  link.download = "gcode-drawing.jpg";
+  link.download = `${baseName}.jpg`;
   link.click();
+}
+
+function downloadGCode() {
+  if (!state.runBaseName) return;
+
+  const blob = new Blob([state.runSource], { type: "text/plain;charset=utf-8" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = `${state.runBaseName}.txt`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function updateCurrentLine() {
@@ -703,6 +731,7 @@ function updateCurrentLine() {
 
 els.runButton.addEventListener("click", runProgram);
 els.saveButton.addEventListener("click", saveImage);
+els.downloadCodeButton.addEventListener("click", downloadGCode);
 els.settingsButton.addEventListener("click", () => {
   const isOpen = els.settingsPanel.classList.toggle("is-open");
   els.settingsButton.setAttribute("aria-expanded", String(isOpen));
@@ -716,6 +745,9 @@ els.paperSelect.addEventListener("change", () => setPaper(getSettings()));
 });
 els.codeEditor.addEventListener("input", () => {
   els.saveButton.disabled = true;
+  els.downloadCodeButton.disabled = true;
+  state.runBaseName = null;
+  state.runSource = "";
   clearRunAnnotations();
   setMessage("Ready.");
   updateCurrentLine();
