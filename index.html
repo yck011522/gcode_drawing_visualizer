@@ -58,6 +58,8 @@
       .settings-grid { display: grid; grid-template-columns: repeat(6, minmax(8rem, 1fr)); gap: .85rem; padding: .9rem; }
       label { display: grid; gap: .3rem; color: #52606a; font-size: .78rem; font-weight: 700; }
       input, select { width: 100%; border: 1px solid #bfc8cc; border-radius: .4rem; padding: .5rem .55rem; color: #22313b; background: #fff; }
+      .checkbox-label { align-content: end; grid-template-columns: auto 1fr; align-items: center; gap: .55rem; min-height: 100%; }
+      .checkbox-label input { width: 1rem; height: 1rem; padding: 0; accent-color: #176b52; }
       @media (max-width: 1000px) { .settings-grid { grid-template-columns: repeat(3, minmax(8rem, 1fr)); } }
       @media (max-width: 800px) {
         header { align-items: flex-start; }
@@ -84,7 +86,7 @@
     </header>
     <main>
       <section id="settingsPanel" class="panel settings-panel" aria-label="Advanced settings">
-        <div class="panel-heading"><h2>Advanced settings</h2><span class="muted">Applied on next run</span></div>
+        <div class="panel-heading"><h2>Advanced settings</h2><span class="muted">Run and export options</span></div>
         <div class="settings-grid">
           <label>Paper
             <select id="paperSelect">
@@ -112,6 +114,10 @@
               <option value="5" selected>5x</option>
               <option value="10">10x</option>
             </select>
+          </label>
+          <label class="checkbox-label">
+            <input id="codeWatermarkInput" type="checkbox" checked>
+            Code watermark
           </label>
         </div>
       </section>

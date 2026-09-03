@@ -33,6 +33,111 @@ test("runs a G-code program, draws on the canvas, and enables JPEG export", asyn
   expect(hasInk).toBe(true);
 });
 
+test("uses the editor text and gutter as an export watermark by default", async ({ page }) => {
+  await page.goto("/");
+
+  const saveButton = page.getByRole("button", { name: "Save image" });
+  await page.getByRole("textbox", { name: "G-code editor" }).fill([
+    "; student code watermark",
+    "G0 X10 Y10 Z0",
+    "G1 Z5 F6000",
+    "G1 X40 Y10"
+  ].join("\n"));
+
+  await page.getByRole("button", { name: "Run program" }).click();
+  await expect(page.locator("#message")).toContainText("Finished 3 moves.");
+
+  await page.evaluate(() => {
+    const original = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function(...args) {
+      const context = this.getContext("2d");
+      const sampleHeight = Math.floor(this.height * .25);
+      const pixels = context.getImageData(0, 0, this.width, sampleHeight).data;
+      let nonWhitePixels = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i] < 250 || pixels[i + 1] < 250 || pixels[i + 2] < 250) nonWhitePixels += 1;
+      }
+      window.__lastExportStats = { nonWhitePixels };
+      return original.apply(this, args);
+    };
+  });
+
+  await saveButton.click();
+  const stats = await page.evaluate(() => window.__lastExportStats);
+  expect(stats.nonWhitePixels).toBeGreaterThan(100);
+});
+
+test("can save without the code watermark when the export option is off", async ({ page }) => {
+  await page.goto("/");
+
+  const saveButton = page.getByRole("button", { name: "Save image" });
+  await page.getByRole("button", { name: "Advanced settings" }).click();
+  await page.getByLabel("Code watermark").uncheck();
+  await page.getByRole("textbox", { name: "G-code editor" }).fill([
+    "; this comment should not appear in the export",
+    "G0 X10 Y10 Z0",
+    "G1 Z5 F6000",
+    "G1 X40 Y10"
+  ].join("\n"));
+
+  await page.getByRole("button", { name: "Run program" }).click();
+  await expect(page.locator("#message")).toContainText("Finished 3 moves.");
+  await expect(saveButton).toBeEnabled();
+
+  await page.evaluate(() => {
+    const original = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function(...args) {
+      const context = this.getContext("2d");
+      const sampleHeight = Math.floor(this.height * .25);
+      const pixels = context.getImageData(0, 0, this.width, sampleHeight).data;
+      let nonWhitePixels = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i] < 250 || pixels[i + 1] < 250 || pixels[i + 2] < 250) nonWhitePixels += 1;
+      }
+      window.__lastExportStats = { nonWhitePixels };
+      return original.apply(this, args);
+    };
+  });
+
+  await saveButton.click();
+  const stats = await page.evaluate(() => window.__lastExportStats);
+  expect(stats.nonWhitePixels).toBe(0);
+});
+
+test("shortens long export watermarks with an ellipsis and final source lines", async ({ page }) => {
+  await page.goto("/");
+
+  const source = Array.from({ length: 40 }, (_, index) => {
+    const line = index + 1;
+    return line === 1 ? "G0 X10 Y10 Z0" : `G1 X${10 + line} Y10 Z5 F6000`;
+  });
+
+  await page.getByRole("textbox", { name: "G-code editor" }).fill(source.join("\n"));
+  await page.getByRole("button", { name: "Run program" }).click();
+  await expect(page.locator("#message")).toContainText("Finished 40 moves.");
+
+  await page.evaluate(() => {
+    const original = CanvasRenderingContext2D.prototype.fillText;
+    window.__watermarkText = [];
+    CanvasRenderingContext2D.prototype.fillText = function(text, ...args) {
+      window.__watermarkText.push(String(text));
+      return original.call(this, text, ...args);
+    };
+  });
+
+  await page.getByRole("button", { name: "Save image" }).click();
+  const drawnText = await page.evaluate(() => window.__watermarkText);
+
+  expect(drawnText.filter(text => text === "...")).toHaveLength(2);
+  expect(drawnText).toContain("G0 X10 Y10 Z0");
+  expect(drawnText).toContain(source[36]);
+  expect(drawnText).toContain(source[37]);
+  expect(drawnText).toContain(source[38]);
+  expect(drawnText).toContain(source[39]);
+  expect(drawnText).not.toContain(source[35]);
+  expect(drawnText).not.toContain(source[34]);
+});
+
 test("shows teacher-style syntax feedback and clears run colors only after editing", async ({ page }) => {
   await page.goto("/");
 

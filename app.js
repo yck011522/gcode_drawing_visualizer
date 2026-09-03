@@ -27,6 +27,7 @@ const els = {
   rapidSpeedInput: document.getElementById("rapidSpeedInput"),
   feedRateInput: document.getElementById("feedRateInput"),
   previewSpeedSelect: document.getElementById("previewSpeedSelect"),
+  codeWatermarkInput: document.getElementById("codeWatermarkInput"),
   editorBody: document.getElementById("editorBody"),
   lineGutter: document.getElementById("lineGutter"),
   codeHighlight: document.getElementById("codeHighlight"),
@@ -105,7 +106,8 @@ function getSettings() {
     penWidth: readPositiveNumber(els.penWidthInput, .7),
     rapidSpeed: readPositiveNumber(els.rapidSpeedInput, 3000),
     initialFeed: readPositiveNumber(els.feedRateInput, 600),
-    previewSpeed: readPositiveNumber(els.previewSpeedSelect, 5)
+    previewSpeed: readPositiveNumber(els.previewSpeedSelect, 5),
+    codeWatermark: els.codeWatermarkInput.checked
   };
 }
 
@@ -534,6 +536,79 @@ function stopProgram() {
   renderEditorState();
 }
 
+function getLineMarker(status) {
+  if (status === "success") return "✓";
+  if (status === "error") return "×";
+  if (status === "current") return "›";
+  return "";
+}
+
+function buildWatermarkRows(lines, maxLines) {
+  const rows = lines.map((text, index) => ({ type: "code", text, lineNumber: index + 1, status: state.lineStatuses[index] || "" }));
+
+  if (rows.length <= maxLines) return rows;
+  if (maxLines <= 6) {
+    const tailCount = Math.max(0, maxLines - 1);
+    return [
+      { type: "ellipsis", text: "...", lineNumber: null, status: "" },
+      ...rows.slice(rows.length - tailCount)
+    ].slice(0, maxLines);
+  }
+
+  const endingRows = 4;
+  const ellipsisRows = 2;
+  const beginningRows = maxLines - endingRows - ellipsisRows;
+
+  return [
+    ...rows.slice(0, beginningRows),
+    { type: "ellipsis", text: "...", lineNumber: null, status: "" },
+    { type: "ellipsis", text: "...", lineNumber: null, status: "" },
+    ...rows.slice(rows.length - endingRows)
+  ];
+}
+
+function drawCodeWatermark(exportCtx, exportCanvas, settings, pxPerMm) {
+  const lines = splitSourceLines();
+  const margin = 5 * pxPerMm;
+  const gutterWidth = 18 * pxPerMm;
+  const fontSize = Math.max(9, 2.8 * pxPerMm);
+  const lineHeight = fontSize * 1.5;
+  const maxLines = Math.floor((exportCanvas.height - margin * 2) / lineHeight);
+  const rows = buildWatermarkRows(lines, maxLines);
+
+  exportCtx.save();
+  exportCtx.beginPath();
+  exportCtx.rect(margin, margin, exportCanvas.width - margin * 2, exportCanvas.height - margin * 2);
+  exportCtx.clip();
+  exportCtx.font = `${fontSize}px Consolas, "Courier New", monospace`;
+  exportCtx.textBaseline = "top";
+  exportCtx.globalAlpha = .2;
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const status = row.status;
+    const y = margin + index * lineHeight;
+    const marker = getLineMarker(status);
+
+    if (row.lineNumber !== null) {
+      exportCtx.fillStyle = "#6f8792";
+      exportCtx.textAlign = "right";
+      exportCtx.fillText(`${row.lineNumber}`, margin + gutterWidth * .48, y);
+    }
+
+    if (marker) {
+      exportCtx.fillStyle = status === "error" ? "#9e2d25" : "#277448";
+      exportCtx.fillText(marker, margin + gutterWidth * .82, y);
+    }
+
+    exportCtx.fillStyle = status === "error" ? "#9e2d25" : status === "success" ? "#277448" : "#54717c";
+    exportCtx.textAlign = "left";
+    exportCtx.fillText(row.text, margin + gutterWidth, y);
+  }
+
+  exportCtx.restore();
+}
+
 function saveImage() {
   const settings = getSettings();
   const pxPerMm = 8;
@@ -543,6 +618,11 @@ function saveImage() {
   const exportCtx = exportCanvas.getContext("2d");
   exportCtx.fillStyle = "#fff";
   exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+  if (settings.codeWatermark) {
+    drawCodeWatermark(exportCtx, exportCanvas, settings, pxPerMm);
+  }
+
   exportCtx.strokeStyle = "#111";
   exportCtx.lineCap = "round";
   exportCtx.lineJoin = "round";
