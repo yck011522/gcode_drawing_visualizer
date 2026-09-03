@@ -1,5 +1,37 @@
 const { test, expect } = require("@playwright/test");
 
+async function captureNextExport(page) {
+  await page.evaluate(() => {
+    const original = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function(...args) {
+      const context = this.getContext("2d");
+      const corner = Array.from(context.getImageData(0, 0, 1, 1).data);
+      const layout = window.__lastExportLayout;
+      let paperTopNonWhitePixels = 0;
+
+      if (layout) {
+        const sampleX = layout.paperX + 8;
+        const sampleY = layout.paperY + 8;
+        const sampleWidth = layout.paperWidth - 16;
+        const sampleHeight = Math.floor(layout.paperHeight * .25);
+        const pixels = context.getImageData(sampleX, sampleY, sampleWidth, sampleHeight).data;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i] < 250 || pixels[i + 1] < 250 || pixels[i + 2] < 250) paperTopNonWhitePixels += 1;
+        }
+      }
+
+      window.__lastExportStats = {
+        width: this.width,
+        height: this.height,
+        corner,
+        layout,
+        paperTopNonWhitePixels
+      };
+      return original.apply(this, args);
+    };
+  });
+}
+
 test("runs a G-code program, draws on the canvas, and enables JPEG export", async ({ page }) => {
   await page.goto("/");
 
@@ -47,24 +79,14 @@ test("uses the editor text and gutter as an export watermark by default", async 
   await page.getByRole("button", { name: "Run program" }).click();
   await expect(page.locator("#message")).toContainText("Finished 3 moves.");
 
-  await page.evaluate(() => {
-    const original = HTMLCanvasElement.prototype.toDataURL;
-    HTMLCanvasElement.prototype.toDataURL = function(...args) {
-      const context = this.getContext("2d");
-      const sampleHeight = Math.floor(this.height * .25);
-      const pixels = context.getImageData(0, 0, this.width, sampleHeight).data;
-      let nonWhitePixels = 0;
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i] < 250 || pixels[i + 1] < 250 || pixels[i + 2] < 250) nonWhitePixels += 1;
-      }
-      window.__lastExportStats = { nonWhitePixels };
-      return original.apply(this, args);
-    };
-  });
+  await captureNextExport(page);
 
   await saveButton.click();
   const stats = await page.evaluate(() => window.__lastExportStats);
-  expect(stats.nonWhitePixels).toBeGreaterThan(100);
+  expect(stats.width).toBeGreaterThan(stats.layout.paperWidth);
+  expect(stats.height).toBeGreaterThan(stats.layout.paperHeight);
+  expect(stats.corner.slice(0, 3)).toEqual([201, 206, 209]);
+  expect(stats.paperTopNonWhitePixels).toBeGreaterThan(100);
 });
 
 test("can save without the code watermark when the export option is off", async ({ page }) => {
@@ -84,24 +106,14 @@ test("can save without the code watermark when the export option is off", async 
   await expect(page.locator("#message")).toContainText("Finished 3 moves.");
   await expect(saveButton).toBeEnabled();
 
-  await page.evaluate(() => {
-    const original = HTMLCanvasElement.prototype.toDataURL;
-    HTMLCanvasElement.prototype.toDataURL = function(...args) {
-      const context = this.getContext("2d");
-      const sampleHeight = Math.floor(this.height * .25);
-      const pixels = context.getImageData(0, 0, this.width, sampleHeight).data;
-      let nonWhitePixels = 0;
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i] < 250 || pixels[i + 1] < 250 || pixels[i + 2] < 250) nonWhitePixels += 1;
-      }
-      window.__lastExportStats = { nonWhitePixels };
-      return original.apply(this, args);
-    };
-  });
+  await captureNextExport(page);
 
   await saveButton.click();
   const stats = await page.evaluate(() => window.__lastExportStats);
-  expect(stats.nonWhitePixels).toBe(0);
+  expect(stats.width).toBeGreaterThan(stats.layout.paperWidth);
+  expect(stats.height).toBeGreaterThan(stats.layout.paperHeight);
+  expect(stats.corner.slice(0, 3)).toEqual([201, 206, 209]);
+  expect(stats.paperTopNonWhitePixels).toBe(0);
 });
 
 test("shortens long export watermarks with an ellipsis and final source lines", async ({ page }) => {

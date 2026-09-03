@@ -609,31 +609,85 @@ function drawCodeWatermark(exportCtx, exportCanvas, settings, pxPerMm) {
   exportCtx.restore();
 }
 
-function saveImage() {
-  const settings = getSettings();
-  const pxPerMm = 8;
-  const exportCanvas = document.createElement("canvas");
-  exportCanvas.width = Math.round(state.paper.width * pxPerMm);
-  exportCanvas.height = Math.round(state.paper.height * pxPerMm);
-  const exportCtx = exportCanvas.getContext("2d");
-  exportCtx.fillStyle = "#fff";
-  exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-
-  if (settings.codeWatermark) {
-    drawCodeWatermark(exportCtx, exportCanvas, settings, pxPerMm);
-  }
-
+function drawCompletedSegments(exportCtx, exportCanvas, settings, pxPerMm) {
   exportCtx.strokeStyle = "#111";
   exportCtx.lineCap = "round";
   exportCtx.lineJoin = "round";
   exportCtx.lineWidth = Math.max(1, settings.penWidth * pxPerMm);
-
   state.completedSegments.forEach(segment => {
     exportCtx.beginPath();
     exportCtx.moveTo(segment.from.x * pxPerMm, exportCanvas.height - segment.from.y * pxPerMm);
     exportCtx.lineTo(segment.to.x * pxPerMm, exportCanvas.height - segment.to.y * pxPerMm);
     exportCtx.stroke();
   });
+}
+
+function createPaperExportCanvas(settings, pxPerMm) {
+  const paperCanvas = document.createElement("canvas");
+  paperCanvas.width = Math.round(state.paper.width * pxPerMm);
+  paperCanvas.height = Math.round(state.paper.height * pxPerMm);
+  const paperCtx = paperCanvas.getContext("2d");
+  paperCtx.fillStyle = "#fff";
+  paperCtx.fillRect(0, 0, paperCanvas.width, paperCanvas.height);
+
+  if (settings.codeWatermark) {
+    drawCodeWatermark(paperCtx, paperCanvas, settings, pxPerMm);
+  }
+
+  drawCompletedSegments(paperCtx, paperCanvas, settings, pxPerMm);
+  return paperCanvas;
+}
+
+function createFramedExportCanvas(paperCanvas, pxPerMm) {
+  const margin = Math.round(8 * pxPerMm);
+  const shadowBlur = Math.round(4 * pxPerMm);
+  const shadowOffset = Math.round(3 * pxPerMm);
+  const paperX = margin + shadowBlur;
+  const paperY = margin + shadowBlur;
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = paperCanvas.width + margin * 2 + shadowBlur * 2 + shadowOffset;
+  exportCanvas.height = paperCanvas.height + margin * 2 + shadowBlur * 2 + shadowOffset;
+  const exportCtx = exportCanvas.getContext("2d");
+
+  exportCtx.fillStyle = "#c9ced1";
+  exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+  exportCtx.save();
+  exportCtx.shadowColor = "rgba(39, 45, 48, .24)";
+  exportCtx.shadowBlur = shadowBlur;
+  exportCtx.shadowOffsetX = shadowOffset;
+  exportCtx.shadowOffsetY = shadowOffset;
+  exportCtx.fillStyle = "#fff";
+  exportCtx.fillRect(paperX, paperY, paperCanvas.width, paperCanvas.height);
+  exportCtx.restore();
+
+  exportCtx.drawImage(paperCanvas, paperX, paperY);
+  exportCtx.strokeStyle = "#b6babc";
+  exportCtx.lineWidth = Math.max(1, Math.round(.125 * pxPerMm));
+  exportCtx.strokeRect(paperX + .5, paperY + .5, paperCanvas.width - 1, paperCanvas.height - 1);
+
+  return {
+    canvas: exportCanvas,
+    layout: {
+      paperX,
+      paperY,
+      paperWidth: paperCanvas.width,
+      paperHeight: paperCanvas.height,
+      margin,
+      shadowBlur,
+      shadowOffset
+    }
+  };
+}
+
+function saveImage() {
+  const settings = getSettings();
+  const pxPerMm = 8;
+  const paperCanvas = createPaperExportCanvas(settings, pxPerMm);
+  const exportImage = createFramedExportCanvas(paperCanvas, pxPerMm);
+  const exportCanvas = exportImage.canvas;
+
+  window.__lastExportLayout = exportImage.layout;
 
   const link = document.createElement("a");
   link.href = exportCanvas.toDataURL("image/jpeg", .92);
